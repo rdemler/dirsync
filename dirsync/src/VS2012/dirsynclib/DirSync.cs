@@ -39,6 +39,8 @@ namespace dirsynclib
     {
         #region Data Members
 
+        const string kSystemPathPattern = @"^[A-Z]\:(\\|\/)Windows(\\|\/)";
+
         //private bool _caseSensitive;
         SyncPolicy _syncPolicy;
         MessageLevel _verbosity;
@@ -158,8 +160,7 @@ namespace dirsynclib
                     {
                         if (!Directory.Exists(sourcePath + "\\" + dir.Name))
                         {
-                            Directory.Delete(destPath + "\\" + dir.Name);
-                            BroadcastMessage(MessageLevel.FileIO, "Deleted directory '{0}'.", destPath + "\\" + dir.Name);
+                            DeleteDirectory(destPath + "\\" + dir.Name);
                         }
                     }
                     catch (Exception ex)
@@ -198,6 +199,11 @@ namespace dirsynclib
                 {
                     try
                     {
+                        if (Regex.IsMatch(sourcePath + "\\" + file.Name, kSystemPathPattern))
+                        {
+                            throw new Exception(string.Format("File '{0}' appears to be contained within a system directory.", sourcePath + "\\" + file.Name));
+                        }
+
                         if (!File.Exists(sourcePath + "\\" + file.Name))
                         {
                             File.Delete(destPath + "\\" + file.Name);
@@ -272,6 +278,61 @@ namespace dirsynclib
             catch (Exception ex)
             {
                 BroadcastMessage(MessageLevel.ERROR, "{0} caught while syncing file '{1}': {2}", ex.GetType().Name, sourcePath, ex.Message);
+            }
+        }
+
+        private void DeleteDirectory(string path)
+        {
+            if (!Directory.Exists(path))
+            {
+                return;
+            }
+
+            if (Regex.IsMatch(path, kSystemPathPattern))
+            {
+                throw new Exception(string.Format("Path '{0}' appears to be a system directory.", path));
+            }
+
+            try
+            {
+                foreach (string dir in Directory.GetDirectories(path))
+                {
+                    try
+                    {
+                        DeleteDirectory(dir);
+                    }
+                    catch (Exception ex)
+                    {
+                        BroadcastMessage(MessageLevel.ERROR, "{0} caught while deleting directory '{1}': {2}", ex.GetType().Name, dir, ex.Message);
+                    }
+                }
+
+                foreach (string file in Directory.GetFiles(path))
+                {
+                    try 
+                    {
+                        File.Delete(file);
+                        BroadcastMessage(MessageLevel.FileIO, "Deleted file '{0}'", file);
+                    }
+                    catch (Exception ex)
+                    {
+                        BroadcastMessage(MessageLevel.ERROR, "{0} caught while deleting file '{1}': {2}", ex.GetType().Name, file, ex.Message);
+                    }
+                }
+
+                try
+                {
+                    Directory.Delete(path);
+                    BroadcastMessage(MessageLevel.FileIO, "Deleted directory '{0}'", path);
+                }
+                catch (Exception ex)
+                {
+                    BroadcastMessage(MessageLevel.ERROR, "{0} caught while deleting directory '{1}': {2}", ex.GetType().Name, path, ex.Message);
+                }
+            }
+            catch (Exception ex)
+            {
+                BroadcastMessage(MessageLevel.ERROR, "{0} caught while deleting directory '{1}': {2}", ex.GetType().Name, path, ex.Message);
             }
         }
 
